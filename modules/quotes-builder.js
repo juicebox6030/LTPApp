@@ -1492,6 +1492,23 @@
       setShowSendModal(true);
     }
 
+    // Quotes may be sent before tax is final; invoices still require QuickBooks.
+    // This is a decision for this send only, never a stored tax exemption or a
+    // workspace preference. Keep the saved tax/total intact for the server PDF.
+    function confirmSendQuoteWithoutTax(reason) {
+      setDlg({
+        title: "Sales Tax Unavailable",
+        message: reason + " Sales tax on this quote may be missing or out of date. "
+          + "Sending will use the quote's current saved totals without recalculating tax. "
+          + "You can send this quote anyway; sales tax must be calculated before sending a taxable invoice.",
+        confirmLabel: "Send Quote Anyway",
+        onConfirm: function() {
+          setDlg(null);
+          sendQuoteEmail(draft);
+        },
+      });
+    }
+
     function executeSendQuote() {
       if (!(sendRecipients.to || []).length) { showAlert("No Recipient", "Add at least one To recipient."); return; }
       if (draft.id == null || !draft.shareToken) { showAlert("Save First", "Save the quote before sending so it has a stable share link."); return; }
@@ -1502,18 +1519,12 @@
       // Auto-calc QuickBooks sales tax before sending so the client's PDF +
       // email show an accurate tax-inclusive total, then send with the
       // freshened draft. Skipped when tax is already fresh or N/A.
-      // A taxable client's quote must not go out with a tax figure nobody can
-      // vouch for. The customer's copy is rendered server-side from the saved
-      // row, so sending on a failed or skipped calculation mails either a stale
-      // tax (computed against lines that have since changed) or none at all,
-      // while the app shows something else.
+      // If calculation is unavailable, require an explicit quote-only override
+      // before sending the saved totals. Cancellation leaves the composer open.
       if (customerTaxable && !(isAdmin && qbConnected)) {
-        showAlert("Sales Tax Unavailable",
-          (qbConnected
+        confirmSendQuoteWithoutTax(qbConnected
             ? "This quote is for a taxable client, and only an admin can calculate its sales tax in QuickBooks."
-            : "This quote is for a taxable client, and QuickBooks — which calculates the sales tax — is not connected.")
-          + "\n\nThe quote was NOT sent. "
-          + (qbConnected ? "Ask an admin to send it." : "Connect QuickBooks in Settings and try again."));
+            : "This quote is for a taxable client, and QuickBooks — which calculates the sales tax — is not connected.");
         return;
       }
       if (isAdmin && qbConnected && customerTaxable && !taxFresh) {
@@ -1521,11 +1532,9 @@
         calcQuoteTax().then(function(updated) {
           if (!updated) {
             setSending(false);
-            // calcQuoteTax already toasted the reason; make the consequence
-            // explicit rather than sending with the old number.
-            showAlert("Sales Tax Unavailable",
-              "The sales tax for this quote could not be calculated, so the quote was NOT sent.\n\n"
-              + "Try again, or untick the client's taxable flag if no tax applies.");
+            // calcQuoteTax already reported the failure. Sending with the old
+            // total is allowed for a quote only after this separate confirmation.
+            confirmSendQuoteWithoutTax("The sales tax for this quote could not be calculated.");
             return;
           }
           sendQuoteEmail(updated);
@@ -2529,9 +2538,6 @@
         });
       }(),
 
-      // Generic confirm / alert dialog
-      dlg && h(window.LTPConfirmDialog, { dlg: dlg, onCancel: function() { setDlg(null); } }),
-
       // Activity detail popup
       // Shared with the sibling builder — components/doc-activity-detail.js.
       viewActivity && h(window.LTPActivityDetail, {
@@ -2610,7 +2616,10 @@
               h("span", { style: { color: B.accent } }, "$" + window.LTP_money((window.LTP_QUOTE_TOTALS(draft) || {}).total || 0)))
           )
         )
-      )
+      ),
+      // Render after the composer so a send confirmation sits above it at the
+      // shared modal z-index. Cancel preserves the message and recipients.
+      dlg && h(window.LTPConfirmDialog, { dlg: dlg, onCancel: function() { setDlg(null); } })
     );
   };
 })();

@@ -309,7 +309,8 @@
 // skips the staff auth probe there; both are precached, so the shell must be
 // refetched. dev had taken v92 for the gear check-out work, so this is the
 // next string above it.
-var CACHE_VERSION = 'ltp-shell-v93';
+// v94: quote-only confirmation to send when sales tax cannot be calculated.
+var CACHE_VERSION = 'ltp-shell-v94';
 
 var SAME_ORIGIN_PRECACHE = [
   '/',
