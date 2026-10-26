@@ -1431,6 +1431,10 @@
 
     function openQuoteSendModal() {
       // Validate before opening the modal
+      if (isDirty && quoteSendSnapshot(draft) !== quoteSendSnapshot(cleanRef.current)) {
+        showAlert("Save Quote Changes", "Save your quote changes before composing the email so its totals match the shared quote.");
+        return;
+      }
       var itemCount = draft.sections.reduce(function(n, s) { return n + s.items.filter(function(i) { return i.type !== "note"; }).length; }, 0);
       if (itemCount === 0) { showAlert("No Items", "Add at least one line item before sending."); return; }
       if (!draft.companyId && !draft.clientContactId) { showAlert("No Client", "Select a company or contact before sending."); return; }
@@ -1544,10 +1548,39 @@
       sendQuoteEmail(draft);
     }
 
-    // Build + POST the quote email for `baseDraft` (the freshest draft, which
-    // may carry a just-calculated qbTaxTotal). Kept separate from
-    // executeSendQuote so the optional tax calc can resolve first.
+    // Verify the document actually reached the server before using its totals
+    // in the email. Save is debounced, and a failed/pending save or a remote
+    // edit must not let the email disagree with the shared quote/PDF. Recipient
+    // edits and activity are metadata, not changes to the quoted document.
+    function quoteSendSnapshot(q) {
+      var snapshot = cloneDraft(q);
+      delete snapshot.activity;
+      return JSON.stringify(snapshot);
+    }
+
     function sendQuoteEmail(baseDraft) {
+      setSending(true);
+      var snapshot = quoteSendSnapshot(baseDraft);
+      return fetch("/api/quotes/" + baseDraft.id, { credentials: "include", cache: "no-store" })
+        .then(function(r) {
+          if (!r.ok) throw new Error("Could not verify the saved quote. Check your connection and try again.");
+          return r.json();
+        })
+        .then(function(saved) {
+          if (quoteSendSnapshot(saved) !== snapshot) {
+            throw new Error("The saved quote differs from this email's quote. Close the email, save or reload the quote, wait for saving to finish, then compose it again.");
+          }
+          postQuoteEmail(baseDraft);
+        })
+        .catch(function(err) {
+          setSending(false);
+          showAlert("Quote Not Sent", err.message || "Could not verify the saved quote. Try again.");
+        });
+    }
+
+    // Build + POST only after the saved row matches baseDraft (which may carry
+    // just-calculated tax). Keep the existing send/error lifecycle unchanged.
+    function postQuoteEmail(baseDraft) {
       var isResend = baseDraft.status !== "draft";
       setSending(true);
       // Bake {{header}} HTML with a total that reflects baseDraft's (possibly

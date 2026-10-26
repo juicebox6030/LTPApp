@@ -22,7 +22,13 @@ customer-facing provisional-tax label or alter PDF totals.
 Admins with QuickBooks connected still calculate stale/missing tax before
 sending. Successful calculation sends the updated totals without an override.
 Tax-exempt quotes follow the existing send flow. Recipient, save/share-link,
-and Gmail checks still apply. Invoice sending is unchanged.
+and Gmail checks still apply. Save document edits before opening the composer.
+Immediately before sending, the sender reads the saved quote and compares its
+normalized document fields with the email snapshot, excluding recipients and
+activity. A pending/failed save, changed server document, or failed read stops
+the send with guidance to save or reload and compose again. This prevents a
+known mismatch between locally edited email totals and saved share/PDF totals;
+it does not add transaction locking against edits after that read. Invoice sending is unchanged.
 
 Implementation stays in `modules/quotes-builder.js`, using the existing
 confirmation dialog and email sender. The dialog renders after the composer
@@ -63,7 +69,25 @@ Verified locally against the working change based on `206ebbb`, shell v94:
   was visible above the composer with no horizontal overflow; Cancel preserved
   the composer and recipient. Desktop was checked at 1280 × 800.
 - The served quote-builder script's SHA-256 matched the working file:
-  `176ed874e0a3bb11d9b9c39219bf6720d0e546377de2979c32b229bcd3407080`.
+  `6861b6ed242b777ad4badadd2cb7a12bab7545403ef641dc4a159aa0cb461be1`
+  (rechecked on the final script at port 8766).
+
+Additional review acceptance on port 8766 reproduced an unsaved quantity edit
+sending a $200 email while the saved quote remained $100 in the first revision.
+The revised browser flow blocks that edit with **Save Quote Changes** and opens
+no composer. After Save Changes settles, confirming the override sends a $200
+email matching the saved quantity of 2, adding exactly one `email_sent` entry.
+Node regressions additionally cover differing server quantities/tax/client/terms,
+pending saves, unsuccessful reads, malformed JSON, and network failures; all
+refuse the send and release the busy state. Matching saved documents still send,
+including newly calculated tax and recipient/activity-only differences.
+
+Muse Wonder Full 1.0, medium, reviewed base `206ebbb` through `17b8f7a` read-only
+(round `ltpapp-pr1-muse-full-medium-review-r1`) and returned production ready with
+no confirmed defects. It identified the unsaved-draft mismatch as a pre-existing
+risk; the lead treated the reproduced financial mismatch as blocking and fixed
+it before final review. Optional audit logging and synchronous double-click
+locking remain outside this change. A second review covers this safeguard.
 
 Gmail delivery was stubbed; QuickBooks connection state and all records were
 local fixtures. Live Gmail/QuickBooks delivery and physical iOS installation

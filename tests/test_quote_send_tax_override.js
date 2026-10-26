@@ -16,6 +16,8 @@ function between(source, start, end) {
 }
 const handlers = between(quote, "    function confirmSendQuoteWithoutTax(", "    function sendQuoteEmail(");
 const invoiceHandler = between(invoice, "    function executeSend()", "    function sendInvoiceEmail(");
+const cloneHandler = between(quote, "  function cloneDraft(", "  // ═");
+const verifiedSender = between(quote, "    function quoteSendSnapshot(", "    function postQuoteEmail(");
 
 function fixture(overrides = {}) {
   const calls = { sent: [], alerts: [], calculations: 0 };
@@ -98,6 +100,58 @@ async function run() {
     assert.equal(calls.sent.length, 0, "taxable invoices remain blocked");
     assert.equal(calls.alerts[0][0], "Sales Tax Unavailable");
     assert.equal(ctx.dlg, null, "invoice has no override");
+  }
+  // Exercise the saved-row check itself, rather than replacing it with the
+  // email stub used for the policy checks above. These are the financial
+  // mismatch and failed/pending-save cases the override makes reachable.
+  async function verify(local, saved, response = {}) {
+    const calls = { sent: [], alerts: [] };
+    const ctx = {
+      window: { LTP_docProjectIds: q => q.projectIds || [] },
+      todayISO: () => "2026-10-26",
+      resolvedExpiry: q => q.expiryDate || "2026-11-25",
+      setSending(value) { calls.sending = value; },
+      showAlert(...args) { calls.alerts.push(args); },
+      postQuoteEmail(row) { calls.sent.push(row); },
+      fetch(url, options) {
+        assert.equal(url, "/api/quotes/1");
+        assert.equal(options.cache, "no-store");
+        if (response.networkError) return Promise.reject(new Error("offline"));
+        return Promise.resolve({ ok: response.ok !== false, json: () => response.badJson
+          ? Promise.reject(new Error("invalid JSON")) : Promise.resolve(saved) });
+      },
+    };
+    vm.createContext(ctx);
+    vm.runInContext(cloneHandler + verifiedSender, ctx);
+    await ctx.sendQuoteEmail(local);
+    return calls;
+  }
+  const saved = { id: 1, shareToken: "local", sections: [{ id: "s1", items: [{ qty: 1, unitPrice: 100 }] }] };
+  {
+    const calls = await verify({ ...saved, sendRecipients: { to: ["new@example.com"] }, activity: [{ type: "viewed" }] }, saved);
+    assert.equal(calls.sent.length, 1, "recipient/activity metadata does not prevent sending");
+    assert.equal(calls.alerts.length, 0);
+  }
+  for (const local of [
+    { ...saved, sections: [{ id: "s1", items: [{ qty: 2, unitPrice: 100 }] }] },
+    { ...saved, qbTaxTotal: 17 },
+    { ...saved, companyId: 2 },
+    { ...saved, terms: "Changed terms" },
+  ]) {
+    const calls = await verify(local, saved);
+    assert.equal(calls.sent.length, 0, "unsaved, pending, failed, or remote-changed document cannot send");
+    assert.equal(calls.sending, false);
+    assert.equal(calls.alerts[0][0], "Quote Not Sent");
+  }
+  for (const response of [{ ok: false }, { networkError: true }, { badJson: true }]) {
+    const calls = await verify(saved, saved, response);
+    assert.equal(calls.sent.length, 0, "failed saved-row verification never sends");
+    assert.equal(calls.sending, false);
+  }
+  {
+    const updated = { ...saved, qbTaxTotal: 17 };
+    const calls = await verify(updated, updated);
+    assert.equal(calls.sent[0], updated, "matching saved calculation/retried save can send");
   }
   console.log("PASS: quote tax confirmation, cancellation, retry, calculation, prerequisites, and invoice blockers");
 }
