@@ -83,8 +83,14 @@ fresh tax, and recipient/activity metadata differences allow sending.
 
 Muse Wonder Full 1.0 at medium reasoning reviewed the earlier fork change in
 two rounds. The lead reproduced the unsaved-document totals mismatch and
-fixed it before the second approval. The WPCOM port requires its own review
-because its base and quote builder are newer.
+fixed it before the second approval. The WPCOM port received a separate review
+(`ltpapp-wpcom-muse-full-medium-review-r3`) of base `065e301` through `eeb12fa`.
+Muse returned **production-ready: YES**, with no blocking findings, and the lead
+agrees. The reviewer independently reran the Node suite, syntax and shell
+checks, and 45 backend tests, and probed actual normalization, saved rental
+windows, labor markers, recipient metadata, and pending-save refusal. The
+follow-up documentation commit records this verdict and the owner's upstream
+Actions clarification; application code is unchanged from the reviewed head.
 
 Snapshot comparison may fail closed for unusual item key ordering, numeric
 strings, or date fallbacks across midnight; reload/save resolves such cases.
@@ -93,5 +99,6 @@ audit logging and synchronous double-click locking are outside this change.
 
 Live Gmail/QuickBooks delivery and physical iOS installation were not tested.
 No production records changed. Merge approval belongs to Landry. No merge or
-deployment is authorized by this change. All verification runs locally;
-GitHub Actions must remain disabled.
+deployment is authorized by this change. Acceptance checks ran locally.
+The owner clarified that the disabled-Actions rule applies to their repositories; this upstream PR follows WPCOM's existing
+workflow without changing repository settings.
