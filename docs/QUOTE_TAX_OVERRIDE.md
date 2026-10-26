@@ -28,7 +28,9 @@ normalized document fields with the email snapshot, excluding recipients and
 activity. A pending/failed save, changed server document, or failed read stops
 the send with guidance to save or reload and compose again. This prevents a
 known mismatch between locally edited email totals and saved share/PDF totals;
-it does not add transaction locking against edits after that read. Invoice sending is unchanged.
+it does not add transaction locking against edits after that read.
+
+Invoice sending is unchanged.
 
 Implementation stays in `modules/quotes-builder.js`, using the existing
 confirmation dialog and email sender. The dialog renders after the composer
@@ -87,7 +89,16 @@ Muse Wonder Full 1.0, medium, reviewed base `206ebbb` through `17b8f7a` read-onl
 no confirmed defects. It identified the unsaved-draft mismatch as a pre-existing
 risk; the lead treated the reproduced financial mismatch as blocking and fixed
 it before final review. Optional audit logging and synchronous double-click
-locking remain outside this change. A second review covers this safeguard.
+locking remain outside this change. Round 2 (`ltpapp-pr1-muse-full-medium-review-r2`) reviewed `38b94c4`
+with Muse Wonder Full 1.0, medium, and returned **production ready: YES**, with
+no blocking defects. The lead agrees. The reviewer independently reran the
+Node suite, syntax check, shell guard, and 44 backend tests, and probed the
+actual normalization and composer guards. Read failures and document mismatch
+refuse sending; matching saved rows, fresh tax, resends, and recipient/activity
+metadata differences send. Rare normalization differences (item key ordering,
+numeric strings, or date fallbacks across midnight) may refuse a send until
+reload/save; they cannot bypass the guard. The GET-to-POST concurrency window
+is disclosed above. No review requested a merge or deployment.
 
 Gmail delivery was stubbed; QuickBooks connection state and all records were
 local fixtures. Live Gmail/QuickBooks delivery and physical iOS installation
